@@ -1,0 +1,9 @@
+#------------------------------------------------------------------------------#
+# COPYRIGHT(C) FUJITSU LIMITED 2011
+#------------------------------------------------------------------------------#
+menu "Fujitsu WAVE-IF support"
+
+config FUJITSU_WAVEIF
+	tristate "Fujitsu WAVE Interface Driver"
+	default y
+endmenu

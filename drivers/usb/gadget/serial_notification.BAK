@@ -1,0 +1,153 @@
+/*
+ * Copyright(C) 2011 FUJITSU LIMITED
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; version 2
+ * of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ */
+/*----------------------------------------------------------------------------*/
+// COPYRIGHT(C) FUJITSU LIMITED 2011
+/*----------------------------------------------------------------------------*/
+
+#include <linux/module.h>	/* Specifically, a module */
+#include <linux/kernel.h>	/* We're doing kernel work */
+#include <linux/proc_fs.h>	/* Necessary because we use the proc fs */
+#include <asm/uaccess.h>	/* for copy_from_user */
+#include <linux/delay.h>
+#include <linux/switch.h>
+#include <linux/workqueue.h>
+
+#define S_NOTI_NAME		"switch_GS0"
+
+struct serial_notification {
+	int		usb_connect;		// USB cable conect/disconect
+	int		online;				// f_serial ON/OFF
+	struct	switch_dev	sdev;   // switch_dev object instans
+};
+static struct serial_notification *s_noti;
+
+int	serial_notification_status;
+
+int serial_notification_init(void);
+void serial_notification_deinit(void);
+void serial_notification_set_state(int serial_mode);
+void serial_notification_detect_cable(int connect);
+void serial_notification_schedule_work(void);
+
+static void do_switch_set_state_tasklet(struct work_struct *work)
+{
+
+	pr_info("[USB_GADGET]%s() Call switch_set_state() switch_GS0 = %s", __func__,serial_notification_status ? "online" : "offline");
+	switch_set_state(&s_noti->sdev, serial_notification_status);
+}
+DECLARE_WORK(switch_set_state_tasklet, do_switch_set_state_tasklet);
+
+void serial_notification_schedule_work()
+{
+	schedule_work(&switch_set_state_tasklet);
+}
+
+static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", S_NOTI_NAME);
+}
+
+static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s-%s\n", S_NOTI_NAME, (s_noti->online ? "online" : "offline"));
+}
+
+/*  This function is called LISMO port online / offline, 
+ *  from the file ANDROIDY/kernel/drivers/usb/gadget/f_lismo.c
+ */
+void serial_notification_set_state(int serial_mode)
+{
+	s_noti->online = serial_mode;
+	if (s_noti->online) {
+		if (s_noti->usb_connect) {
+			pr_info("[USB_GADGET]%s() STATE ON LINE \n", __func__);
+			serial_notification_status = 1;
+			serial_notification_schedule_work();
+		}
+	}
+	else {
+		pr_info("[USB_GADGET]%s() STATE OFF LINE \n", __func__);
+		serial_notification_status = 0;
+		serial_notification_schedule_work();
+	}
+}
+
+/*  This function is called upon USB Connection / Dis-Connection, 
+ *  from the file ANDROIDY/kernel/drivers/usb/gadget/msm72k_udc.c
+ */
+void serial_notification_detect_cable(int connect)
+{
+	s_noti->usb_connect = connect;
+	if (s_noti->online) {
+		if (s_noti->usb_connect) {
+			pr_info("[USB_GADGET]%s() CABLE ON LINE \n", __func__);
+			serial_notification_status = 1;
+			serial_notification_schedule_work();
+		}
+		else {
+			pr_info("[USB_GADGET]%s() CABLE OFF LINE \n", __func__);
+			serial_notification_status = 0;
+			serial_notification_schedule_work();
+		}
+	}
+}
+
+/*
+ * This function is called when the module is loaded
+ *  from the file ANDROIDY/kernel/drivers/usb/gadget/android.c
+ */
+int serial_notification_init(void)
+{
+	int rc;
+	
+	s_noti = kzalloc(sizeof(*s_noti), GFP_KERNEL);
+	if (!s_noti)
+		return -ENOMEM;
+
+	serial_notification_status = 0;
+	
+	s_noti->sdev.name = S_NOTI_NAME;
+	s_noti->sdev.print_name = print_switch_name;
+	s_noti->sdev.print_state = print_switch_state;
+	rc = switch_dev_register(&s_noti->sdev);
+	if (rc < 0){
+		kfree(s_noti);
+		s_noti = NULL;
+		pr_info("Could not register (%s) in %s()\n", s_noti->sdev.name, __func__);
+		return -ENOMEM;
+	}
+	
+	s_noti->online = 0;
+	s_noti->usb_connect = 0;
+	pr_info("[USB_GADGET]%s() \n", __func__);
+	
+	return 0;
+}
+
+/*
+ * This function is called when the module is unloaded
+ *  from the file ANDROIDY/kernel/drivers/usb/gadget/android.c
+ */
+void serial_notification_deinit(void)
+{
+	pr_info("[USB_GADGET]%s() Unload Object=%s()\n",  __func__ ,s_noti->sdev.name);
+	switch_dev_unregister(&s_noti->sdev);
+	kfree(s_noti);
+	s_noti = NULL;
+	return;
+}
