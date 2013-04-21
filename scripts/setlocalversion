@@ -40,6 +40,8 @@ scm_version()
 	fi
 	if test "$1" = "--short"; then
 		short=true
+		# Don't append "+" to the local version in order to work prebuilt kernel modules.
+		return
 	fi
 
 	# Check for git and a git repo.

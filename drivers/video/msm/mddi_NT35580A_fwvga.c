@@ -983,7 +983,7 @@ static int __init mddi_NT35580A_init(void)
             pinfo->lcd.v_front_porch          = 2;
             pinfo->lcd.v_pulse_width          = 0;
         }
-        pinfo->lcd.hw_vsync_mode          = TRUE;
+        pinfo->lcd.hw_vsync_mode          = FALSE;
         pinfo->lcd.vsync_notifier_period  = 0;
         pinfo->bl_min                     = 1;
         pinfo->bl_max                     = 127;

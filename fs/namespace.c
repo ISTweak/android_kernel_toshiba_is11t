@@ -1053,7 +1053,7 @@ static int do_umount(struct vfsmount *mnt, int flags)
 	LIST_HEAD(umount_list);
 
 /* FUJITSU:2011-06-24 Add start */
-#ifndef FAS2S9PASA8SLIOADW
+#if 0
 	{
 		char top[__PATH_MAX+1] = "";
 
@@ -1981,7 +1981,7 @@ long do_mount(char *dev_name, char *dir_name, char *type_page,
 		return retval;
 
 /* FUJITSU:2011-06-24 Add start */
-#ifndef FAS2S9PASA8SLIOADW
+#if 0
 	{
 		char top[__PATH_MAX+1] = "";
 

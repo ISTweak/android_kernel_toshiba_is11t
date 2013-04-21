@@ -497,7 +497,7 @@ boolean mdp_hw_vsync_set_handler(msm_fb_vsync_handler_type handler, void *data)
 	 * enable_irq(MDP_HW_VSYNC_IRQ);
 	 */
 
-	return FALSE;	//TRUE;
+	return FALSE;	//TRUE
 }
 
 uint32 mdp_get_lcd_line_counter(struct msm_fb_data_type *mfd)
