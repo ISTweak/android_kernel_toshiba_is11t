@@ -47,7 +47,7 @@ static inline void mapping_clear_unevictable(struct address_space *mapping)
 
 static inline int mapping_unevictable(struct address_space *mapping)
 {
-	if (likely(mapping))
+	if (mapping)
 		return test_bit(AS_UNEVICTABLE, &mapping->flags);
 	return !!mapping;
 }
@@ -423,8 +423,10 @@ static inline int fault_in_pages_readable(const char __user *uaddr, int size)
 		const char __user *end = uaddr + size - 1;
 
 		if (((unsigned long)uaddr & PAGE_MASK) !=
-				((unsigned long)end & PAGE_MASK))
+				((unsigned long)end & PAGE_MASK)) {
 		 	ret = __get_user(c, end);
+			(void)c;
+		}
 	}
 	return ret;
 }

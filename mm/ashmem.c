@@ -361,6 +361,12 @@ static int ashmem_shrink(struct shrinker *s, int nr_to_scan, gfp_t gfp_mask)
 	if (!nr_to_scan)
 		return lru_count;
 
+	/* Deadlock avoidance for low memory */
+	if (mutex_is_locked(&ashmem_mutex)){
+		printk(KERN_ERR "ashmem: Deadlock avoidance for low memory\n");
+		return -1;
+	}
+
 	mutex_lock(&ashmem_mutex);
 	list_for_each_entry_safe(range, next, &ashmem_lru_list, lru) {
 		struct inode *inode = range->asma->file->f_dentry->d_inode;

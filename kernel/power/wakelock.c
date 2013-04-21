@@ -53,6 +53,8 @@ static DEFINE_SPINLOCK(list_lock);
 static LIST_HEAD(inactive_locks);
 static struct list_head active_wake_locks[WAKE_LOCK_TYPE_COUNT];
 static int current_event_num;
+static int suspend_sys_sync_count;
+static DEFINE_SPINLOCK(suspend_sys_sync_lock);
 static struct workqueue_struct *suspend_sys_sync_work_queue;
 static DECLARE_COMPLETION(suspend_sys_sync_comp);
 struct workqueue_struct *suspend_work_queue;
@@ -273,6 +275,8 @@ long has_wake_lock(int type)
 
 static void suspend_sys_sync(struct work_struct *work)
 {
+	unsigned long flags;
+
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("PM: Syncing filesystems ... \n");
 
@@ -280,12 +284,23 @@ static void suspend_sys_sync(struct work_struct *work)
 
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("sync done.\n");
+
+	spin_lock_irqsave(&suspend_sys_sync_lock, flags);
+	suspend_sys_sync_count--;
+	spin_unlock_irqrestore(&suspend_sys_sync_lock, flags);
 }
 static DECLARE_WORK(suspend_sys_sync_work, suspend_sys_sync);
 
 void suspend_sys_sync_queue(void)
 {
-	queue_work(suspend_sys_sync_work_queue, &suspend_sys_sync_work);
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&suspend_sys_sync_lock, flags);
+	ret = queue_work(suspend_sys_sync_work_queue, &suspend_sys_sync_work);
+	if (ret)
+		suspend_sys_sync_count++;
+	spin_unlock_irqrestore(&suspend_sys_sync_lock, flags);
 }
 
 static bool suspend_sys_sync_abort;
@@ -297,7 +312,15 @@ static DEFINE_TIMER(suspend_sys_sync_timer, suspend_sys_sync_handler, 0, 0);
 #define SUSPEND_SYS_SYNC_TIMEOUT (HZ/4)
 static void suspend_sys_sync_handler(unsigned long arg)
 {
-	if (is_workqueue_empty(suspend_sys_sync_work_queue)) {
+	unsigned long flags;
+	bool suspend_sys_sync_done = false;
+
+	spin_lock_irqsave(&suspend_sys_sync_lock, flags);
+	if (suspend_sys_sync_count == 0)
+		suspend_sys_sync_done = true;
+	spin_unlock_irqrestore(&suspend_sys_sync_lock, flags);
+
+	if (suspend_sys_sync_done == true) {
 		del_timer(&suspend_sys_sync_timer);
 		complete(&suspend_sys_sync_comp);
 	} else if (has_wake_lock(WAKE_LOCK_SUSPEND)) {
@@ -312,8 +335,17 @@ static void suspend_sys_sync_handler(unsigned long arg)
 
 int suspend_sys_sync_wait(void)
 {
+	unsigned long flags;
+	bool suspend_sys_sync_done = false;
+
 	suspend_sys_sync_abort = false;
-	if (!is_workqueue_empty(suspend_sys_sync_work_queue)) {
+
+	spin_lock_irqsave(&suspend_sys_sync_lock, flags);
+	if (suspend_sys_sync_count == 0)
+		suspend_sys_sync_done = true;
+	spin_unlock_irqrestore(&suspend_sys_sync_lock, flags);
+
+	if (suspend_sys_sync_done == false) {
 		mod_timer(&suspend_sys_sync_timer, jiffies +
 				SUSPEND_SYS_SYNC_TIMEOUT);
 		wait_for_completion(&suspend_sys_sync_comp);

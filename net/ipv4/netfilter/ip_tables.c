@@ -8,9 +8,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-/*----------------------------------------------------------------------------*/
-// COPYRIGHT(C) FUJITSU LIMITED 2011
-/*----------------------------------------------------------------------------*/
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <linux/cache.h>
 #include <linux/capability.h>
@@ -1188,34 +1185,6 @@ get_entries(struct net *net, struct ipt_get_entries __user *uptr,
 	return ret;
 }
 
-/* FUJITSU:2011-06-24 Add start */
-static int __get_cmd_executor(char *buf, unsigned long count)
-{
-	char procfs[32] = "";
-	struct file *filp = NULL;
-	int result = -1;
-
-	sprintf(procfs, "/proc/%d/cmdline", current->real_parent->pid);
-
-	filp = filp_open(procfs, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		printk("open failed(%s)\n", procfs);
-	} else {
-		int retval = kernel_read(filp, 0, buf, count);
-		if (retval <= 0) {
-			printk("read failed(%d)\n", retval);
-		} else {
-			result = 0;
-		}
-		filp_close(filp, NULL);
-	}
-
-	return result;
-}
-
-#define __MAX_NAME_LENGTH 255
-/* FUJITSU:2011-06-24 Add end */
-
 static int
 __do_replace(struct net *net, const char *name, unsigned int valid_hooks,
 	     struct xt_table_info *newinfo, unsigned int num_counters,
@@ -1229,20 +1198,6 @@ __do_replace(struct net *net, const char *name, unsigned int valid_hooks,
 	struct ipt_entry *iter;
 
 	ret = 0;
-
-/* FUJITSU:2011-06-24 Add start */
-	{
-		char executor[__MAX_NAME_LENGTH+1] = "";
-
-		if (__get_cmd_executor(executor, __MAX_NAME_LENGTH) != 0 ||
-			strcmp(executor, "/system/bin/rild")) {
-			printk("ip_tables: Operation not permitted\n");
-			ret = -EPERM;
-			goto out;
-		}
-	}
-/* FUJITSU:2011-06-24 Add end */
-
 	counters = vmalloc(num_counters * sizeof(struct xt_counters));
 	if (!counters) {
 		ret = -ENOMEM;
@@ -1318,6 +1273,7 @@ do_replace(struct net *net, const void __user *user, unsigned int len)
 	/* overflow check */
 	if (tmp.num_counters >= INT_MAX / sizeof(struct xt_counters))
 		return -ENOMEM;
+	tmp.name[sizeof(tmp.name)-1] = 0;
 
 	newinfo = xt_alloc_table_info(tmp.size);
 	if (!newinfo)
@@ -1862,6 +1818,7 @@ compat_do_replace(struct net *net, void __user *user, unsigned int len)
 		return -ENOMEM;
 	if (tmp.num_counters >= INT_MAX / sizeof(struct xt_counters))
 		return -ENOMEM;
+	tmp.name[sizeof(tmp.name)-1] = 0;
 
 	newinfo = xt_alloc_table_info(tmp.size);
 	if (!newinfo)
@@ -2091,6 +2048,7 @@ do_ipt_get_ctl(struct sock *sk, int cmd, void __user *user, int *len)
 			ret = -EFAULT;
 			break;
 		}
+		rev.name[sizeof(rev.name)-1] = 0;
 
 		if (cmd == IPT_SO_GET_REVISION_TARGET)
 			target = 1;

@@ -517,6 +517,15 @@ static atomic_t vmap_lazy_nr = ATOMIC_INIT(0);
 static void purge_fragmented_blocks_allcpus(void);
 
 /*
+ * called before a call to iounmap() if the caller wants vm_area_struct's
+ * immediately freed.
+ */
+void set_iounmap_nonlazy(void)
+{
+	atomic_set(&vmap_lazy_nr, lazy_max_pages()+1);
+}
+
+/*
  * Purges all lazily-freed vmap areas.
  *
  * If sync is 0 then don't purge if there is already a purge in progress.
@@ -734,7 +743,7 @@ static struct vmap_block *new_vmap_block(gfp_t gfp_mask)
 	va = alloc_vmap_area(VMAP_BLOCK_SIZE, VMAP_BLOCK_SIZE,
 					VMALLOC_START, VMALLOC_END,
 					node, gfp_mask);
-	if (unlikely(IS_ERR(va))) {
+	if (IS_ERR(va)) {
 		kfree(vb);
 		return ERR_PTR(PTR_ERR(va));
 	}
@@ -1587,6 +1596,13 @@ void *__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot)
 }
 EXPORT_SYMBOL(__vmalloc);
 
+static inline void *__vmalloc_node_flags(unsigned long size,
+          int node, gfp_t flags)
+{
+  return __vmalloc_node(size, 1, flags, PAGE_KERNEL,
+        node, __builtin_return_address(0));
+}
+
 /**
  *	vmalloc  -  allocate virtually contiguous memory
  *	@size:		allocation size
@@ -1602,6 +1618,25 @@ void *vmalloc(unsigned long size)
 					-1, __builtin_return_address(0));
 }
 EXPORT_SYMBOL(vmalloc);
+
+/**
+ *      vzalloc - allocate virtually contiguous memory with zero fill
+ *      @size:  allocation size
+ *      Allocate enough pages to cover @size from the page level
+ *      allocator and map them into contiguous kernel virtual space.
+ *      The memory allocated is set to zero.
+ *
+ *      For tight control over page level allocator and protection flags
+ *      use __vmalloc() instead.
+ */
+void *vzalloc(unsigned long size)
+{
+  return __vmalloc_node_flags(size, -1,
+          GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO);
+}
+
+EXPORT_SYMBOL(vzalloc);
+
 
 /**
  * vmalloc_user - allocate zeroed virtually contiguous memory for userspace
